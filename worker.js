@@ -1,49 +1,54 @@
 export default {
   async fetch(request, env) {
-
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: corsHeaders()
-      });
+      return new Response(null, { headers: corsHeaders() });
     }
 
     const url = new URL(request.url);
 
-    // Only allow /proxy/* path
+    // Filter Path
     if (!url.pathname.startsWith('/proxy/')) {
-      return new Response('Not found', { status: 404 });
+      return new Response('Path harus dimulai dengan /proxy/', { status: 404 });
     }
 
-    // Build target URL: /proxy/chat/completions → https://api.koboillm.com/v1/chat/completions
+    // Build target URL
     const targetPath = url.pathname.replace('/proxy/', '');
     const targetUrl = `https://api.koboillm.com/v1/${targetPath}`;
 
-    // Forward request body & headers
-    const body = request.method !== 'GET' ? await request.text() : undefined;
+    try {
+      // Forward request
+      const response = await fetch(targetUrl, {
+        method: request.method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': request.headers.get('Authorization') || '',
+        },
+        // Meneruskan body secara langsung (lebih aman untuk stream/large data)
+        body: request.method !== 'GET' && request.method !== 'HEAD' ? await request.arrayBuffer() : undefined,
+      });
 
-    // Get API key from request header
-    const authHeader = request.headers.get('Authorization') || '';
+      // Salin headers response dan tambahkan CORS
+      const newHeaders = new Headers(response.headers);
+      Object.entries(corsHeaders()).forEach(([key, value]) => {
+        newHeaders.set(key, value);
+      });
 
-    const response = await fetch(targetUrl, {
-      method: request.method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader,
-      },
-      body: body,
-    });
+      return new Response(response.body, {
+        status: response.status,
+        headers: newHeaders
+      });
 
-    // Read response
-    const responseData = await response.text();
-
-    return new Response(responseData, {
-      status: response.status,
-      headers: {
-        'Content-Type': response.headers.get('Content-Type') || 'application/json',
-        ...corsHeaders()
-      }
-    });
+    } catch (error) {
+      // Jika terjadi error saat fetch ke target
+      return new Response(JSON.stringify({ 
+        error: "Gagal menghubungi API Target", 
+        detail: error.message 
+      }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() }
+      });
+    }
   }
 };
 
