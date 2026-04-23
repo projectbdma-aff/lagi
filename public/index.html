@@ -737,10 +737,10 @@ const toast       = document.getElementById('toast');
 
 // ── API Key ────────────────────────────────────────────
 // HARDCODE SEMENTARA UNTUK TESTING — ganti string di bawah ini
-const HARDCODED_API_KEY = 'MASUKKAN_API_KEY_DISINI';
+const HARDCODED_API_KEY = 'OPENROUTER_API_KEY';
 
 window.addEventListener('DOMContentLoaded', () => {
-  if (HARDCODED_API_KEY && HARDCODED_API_KEY !== 'MASUKKAN_API_KEY_DISINI') {
+  if (HARDCODED_API_KEY && HARDCODED_API_KEY !== 'OPENROUTER_API_KEY') {
     apiKeyInput.value = HARDCODED_API_KEY;
     dotStatus.classList.add('ok');
   }
@@ -754,7 +754,7 @@ apiKeyInput.addEventListener('input', () => {
 function getApiKey() {
   const manual = apiKeyInput.value.trim();
   if (manual) return manual;
-  if (HARDCODED_API_KEY !== 'MASUKKAN_API_KEY_DISINI') return HARDCODED_API_KEY;
+  if (HARDCODED_API_KEY !== 'OPENROUTER_API_KEY') return HARDCODED_API_KEY;
   return null;
 }
 
