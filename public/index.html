@@ -520,6 +520,70 @@
   .toast.error { border-color: #ff4a6a; color: #ff4a6a; }
   .toast.success { border-color: var(--success); color: var(--success); }
 
+  /* Mode Toggle */
+  .mode-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 8px;
+  }
+
+  .mode-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: var(--muted);
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
+  }
+
+  .mode-btn span { font-size: 18px; }
+
+  .mode-btn small {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .mode-btn.active {
+    background: linear-gradient(135deg, rgba(124,106,255,0.15), rgba(255,106,155,0.1));
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .mode-btn.active small { color: var(--accent); }
+
+  /* Edit mode badge */
+  .edit-badge {
+    display: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 99px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+    text-align: center;
+  }
+
+  .edit-mode .edit-badge { display: block; }
+
   /* Scrollbar */
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -564,6 +628,18 @@
     <button class="style-btn" data-style="studio">
       <div class="style-btn-name">Studio Clean</div>
       <div class="style-btn-desc">Background putih, pencahayaan sempurna</div>
+    </button>
+  </div>
+
+  <!-- Mode Toggle -->
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="mode-generate" data-mode="generate">
+      <span>✦</span> Generate Mode
+      <small>Dari teks deskripsi</small>
+    </button>
+    <button class="mode-btn" id="mode-edit" data-mode="edit">
+      <span>✎</span> Edit Mode
+      <small>Foto asli sebagai referensi</small>
     </button>
   </div>
 
@@ -632,13 +708,17 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const OPENAI_BASE = 'https://api.openai.com/v1';
+// Ganti WORKER_URL dengan URL Worker proxy kamu
+const WORKER_URL = 'https://lagi-production-b4a6.up.railway.app';
+const OPENAI_BASE = `${WORKER_URL}/proxy`;
 
 // ── State ──────────────────────────────────────────────
 let uploadedFile = null;
 let uploadedBase64 = null;
+let uploadedMime = 'image/jpeg';
 let generatedImageUrl = null;
 let selectedStyle = 'infographic-dark';
+let selectedMode = 'generate'; // 'generate' atau 'edit'
 
 // ── Elements ───────────────────────────────────────────
 const apiKeyInput = document.getElementById('api-key');
@@ -678,6 +758,19 @@ function getApiKey() {
   return null;
 }
 
+// ── Mode Toggle ────────────────────────────────────────
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedMode = btn.dataset.mode;
+    btnGenerate.textContent = selectedMode === 'edit'
+      ? '✎ Edit Foto dengan AI'
+      : '✦ Generate Foto Infographic';
+    document.querySelector('.wrap').classList.toggle('edit-mode', selectedMode === 'edit');
+  });
+});
+
 // ── Style Selector ─────────────────────────────────────
 document.querySelectorAll('.style-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -711,6 +804,7 @@ fileInput.addEventListener('change', () => {
 function handleFile(file) {
   if (file.size > 10 * 1024 * 1024) { showToast('File terlalu besar (maks 10MB)', 'error'); return; }
   uploadedFile = file;
+  uploadedMime = file.type || 'image/jpeg';
 
   const reader = new FileReader();
   reader.onload = e => {
@@ -757,18 +851,24 @@ async function generate() {
   try {
     // Step 1: Analyze with GPT-4o
     loaderStep.textContent = '🔍 Menganalisis produk dengan GPT-4o...';
-    const analysis = await analyzeProduct(apiKey, uploadedBase64, uploadedFile.type || 'image/jpeg');
+    const analysis = await analyzeProduct(apiKey, uploadedBase64, uploadedMime);
 
     analysisText.textContent = analysis;
     analysisBox.classList.add('show');
 
     // Step 2: Build prompt
     loaderStep.textContent = '✍️ Menyusun prompt infographic...';
-    const prompt = buildPrompt(analysis, selectedStyle);
+    const prompt = buildPrompt(analysis, selectedStyle, selectedMode === 'edit');
 
-    // Step 3: Generate with gpt-image-1
-    loaderStep.textContent = '🎨 Generating foto dengan gpt-image-1...';
-    const imageUrl = await generateImage(apiKey, prompt);
+    // Step 3: Generate atau Edit
+    let imageUrl;
+    if (selectedMode === 'edit') {
+      loaderStep.textContent = '✎ Editing foto asli dengan gpt-image-1...';
+      imageUrl = await editImage(apiKey, uploadedBase64, uploadedMime, prompt);
+    } else {
+      loaderStep.textContent = '🎨 Generating foto dengan gpt-image-1...';
+      imageUrl = await generateImage(apiKey, prompt);
+    }
 
     generatedImageUrl = imageUrl;
 
@@ -790,6 +890,78 @@ async function generate() {
     setLoading(false);
     checkReady();
   }
+}
+
+// ── gpt-image-1: Edit (pakai foto asli sebagai referensi) ──
+async function editImage(apiKey, base64, mimeType, prompt) {
+  // Convert base64 ke Blob PNG
+  const pngBase64 = await convertToPng(base64, mimeType);
+
+  // Buat FormData — /images/edits pakai multipart
+  const formData = new FormData();
+  formData.append('model', 'gpt-image-1');
+  formData.append('prompt', prompt);
+  formData.append('n', '1');
+  formData.append('size', '1024x1024');
+
+  // Append image sebagai file
+  const blob = base64ToBlob(pngBase64, 'image/png');
+  formData.append('image[]', blob, 'product.png');
+
+  const res = await fetch(`${OPENAI_BASE}/images/edits`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`
+      // Jangan set Content-Type — browser otomatis set multipart boundary
+    },
+    body: formData
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message || '';
+    // Kalau endpoint tidak support, fallback ke generate biasa
+    if (res.status === 404 || res.status === 400 || msg.includes('not supported')) {
+      showToast('Edit mode tidak tersedia, fallback ke Generate mode', 'error');
+      return generateImage(apiKey, prompt);
+    }
+    throw new Error(msg || `Edit error: ${res.status}`);
+  }
+
+  const data = await res.json();
+  if (data.data[0].b64_json) {
+    return `data:image/png;base64,${data.data[0].b64_json}`;
+  }
+  return data.data[0].url;
+}
+
+// Convert image base64 ke PNG base64 via canvas
+async function convertToPng(base64, mimeType) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      // Resize ke max 1024x1024
+      const max = 1024;
+      let w = img.width, h = img.height;
+      if (w > max || h > max) {
+        if (w > h) { h = Math.round(h * max / w); w = max; }
+        else { w = Math.round(w * max / h); h = max; }
+      }
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/png').split(',')[1]);
+    };
+    img.src = `data:${mimeType};base64,${base64}`;
+  });
+}
+
+function base64ToBlob(base64, mimeType) {
+  const bytes = atob(base64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], { type: mimeType });
 }
 
 // ── GPT-4o: Analyze ────────────────────────────────────
@@ -836,13 +1008,24 @@ Jawab dalam Bahasa Indonesia, singkat dan padat (maks 150 kata).`
 }
 
 // ── Build Prompt ────────────────────────────────────────
-function buildPrompt(analysis, style) {
+function buildPrompt(analysis, style, isEditMode = false) {
   const styleMap = {
     'infographic-dark': `Dark background infographic product photo. The product is centered and prominently displayed. Around it, 4-6 annotation callout lines point to different features of the product with short bold text labels in Indonesian. Style: dark, moody, premium — similar to tech or cosmetics product marketing. Clean sans-serif typography. Neon accent lines for callouts. High contrast.`,
     'infographic-light': `Clean light background infographic product photo. White or very light pastel background. The product centered. 4-6 callout annotation lines pointing to product features with short text labels in Indonesian. Style: minimal, clean, modern — similar to Shopee/Tokopedia featured product listings. Soft shadows.`,
     'lifestyle': `Lifestyle product photography. The product placed naturally on a warm wooden surface with complementary props. Soft natural lighting, bokeh background. Warm and inviting mood. No text overlays. Shot like a premium editorial photo.`,
     'studio': `Professional studio product photo. Pure white or gradient white background. Perfect studio lighting with soft shadows. Product centered, clean, commercial quality. No props. Shot like a professional e-commerce catalog photo.`
   };
+
+  if (isEditMode) {
+    return `Keep the product in this image EXACTLY as it is — same shape, same colors, same logo, same text, same design details. Do not change the product at all.
+
+Only change: ${styleMap[style]}
+
+Product features to annotate (from analysis):
+${analysis}
+
+IMPORTANT: Preserve every detail of the original product faithfully. Only modify the background, lighting, and add annotation callouts around the product.`;
+  }
 
   return `Create a professional marketing photo of a product based on this analysis:
 
