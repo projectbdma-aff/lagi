@@ -632,7 +632,9 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const OPENAI_BASE = 'https://api.openai.com/v1';
+// Ganti WORKER_URL dengan URL Worker proxy kamu
+const WORKER_URL = 'https://lagi-production-b4a6.up.railway.app';
+const OPENAI_BASE = `${WORKER_URL}/proxy`;
 
 // ── State ──────────────────────────────────────────────
 let uploadedFile = null;
