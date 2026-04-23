@@ -6,7 +6,7 @@ const FormData = require('form-data');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const TARGET_BASE = 'https://api.koboillm.com/v1';
+const TARGET_BASE = 'https://api.openai.com/v1';
 
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
